@@ -1,0 +1,45 @@
+name: Engineering or documentation task
+description: Track scoped technical, documentation, or project work
+title: "[Task]: "
+labels: ["task", "needs-triage"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: State the result this task should produce.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: List what is included and excluded.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies or blockers
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Product and planning
+        - Frontend
+        - Backend or API
+        - Agents and AI
+        - Data
+        - Research and evaluation
+        - Documentation
+        - DevOps and tooling
+    validations:
+      required: true

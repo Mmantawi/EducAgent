@@ -1,0 +1,36 @@
+name: Research or experiment
+description: Propose a question, experiment, or evaluation
+title: "[Research]: "
+labels: ["research", "needs-triage"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Research question
+    validations:
+      required: true
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis or decision to inform
+    validations:
+      required: true
+  - type: textarea
+    id: method
+    attributes:
+      label: Proposed method
+      description: Describe data, comparisons, metrics, and limitations.
+    validations:
+      required: true
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables and acceptance criteria
+      placeholder: "- [ ] Findings are recorded under docs/research/"
+    validations:
+      required: true
+  - type: textarea
+    id: ethics
+    attributes:
+      label: Ethics, privacy, and safety
+      description: Explain consent, personal-data handling, bias, and possible harm.
