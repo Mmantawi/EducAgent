@@ -1,0 +1,10 @@
+numpy
+easyocr
+pypdfium2
+chromadb
+sentence-transformers
+torch
+torchvision
+openai
+python-dotenv
+
