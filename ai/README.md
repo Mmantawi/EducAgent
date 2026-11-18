@@ -9,6 +9,7 @@ This directory owns the AI-specific parts of EducAgent:
 - answer and pedagogy evaluation;
 - adaptive lesson-policy decisions;
 - speech-model adapters when they belong to the AI layer;
+- curriculum knowledge graph construction, validation, storage, and retrieval under `graph/`;
 - offline evaluation datasets, fixtures, and runners.
 
 Keep model-provider integrations behind interfaces. Every behavioural change should describe expected inputs and outputs, safe failure behaviour, evaluation evidence, privacy impact, and expected latency or cost.
