@@ -8,7 +8,6 @@ from eduagent_kg.schemas.graph import CanonicalEntity
 from eduagent_kg.schemas.review import ReviewItem
 
 from .normalization import identity_variants, normalize_text, terminology_key
-from .semantic import SemanticCandidateProvider
 
 
 @dataclass
@@ -20,14 +19,10 @@ class ResolutionResult:
 
 
 class EntityResolver:
-    def __init__(
-        self, *, fuzzy_threshold: float = 0.88,
-        semantic_provider: SemanticCandidateProvider | None = None,
-    ) -> None:
+    def __init__(self, *, fuzzy_threshold: float = 0.88) -> None:
         if not 0 <= fuzzy_threshold <= 1:
             raise ValueError("fuzzy_threshold must be between 0 and 1")
         self.fuzzy_threshold = fuzzy_threshold
-        self.semantic_provider = semantic_provider
 
     def resolve(self, mentions: list[tuple[str, ExtractedEntity]]) -> ResolutionResult:
         canonicals: list[CanonicalEntity] = []
@@ -67,14 +62,6 @@ class EntityResolver:
             mention_map[mention_id] = match.canonical_id
 
         review_items = self._fuzzy_candidates(canonicals)
-        if self.semantic_provider:
-            for item in self.semantic_provider.candidates(mentions):
-                left = mention_map.get(item.left_mention_id)
-                right = mention_map.get(item.right_mention_id)
-                if left and right and left != right:
-                    review_items.append(_merge_review_item(
-                        left, right, "semantic_candidate", item.score, item.rationale
-                    ))
         return ResolutionResult(canonicals, mention_map, _dedupe_reviews(review_items), confirmed_merges)
 
     def _same_scope(self, canonical: CanonicalEntity, entity: ExtractedEntity) -> bool:

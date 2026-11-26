@@ -20,6 +20,12 @@ class RelationshipType(StrEnum):
     ASSESSES = "ASSESSES"
     DEMONSTRATES = "DEMONSTRATES"
     SUPPORTED_BY = "SUPPORTED_BY"
+    # Knowledge-to-knowledge links between concepts and skills.
+    USES = "USES"
+    COMPONENT_OF = "COMPONENT_OF"
+    INVERSE_OF = "INVERSE_OF"
+    CONTRASTS_WITH = "CONTRASTS_WITH"
+    RELATED_TO = "RELATED_TO"
 
 
 class ReviewStatus(StrEnum):

@@ -53,7 +53,14 @@ class Neo4jGraphStore:
         for statement in statements:
             self.driver.execute_query(statement, database_=self.database)
 
-    def import_graph(self, graph: CanonicalGraph) -> ImportStatistics:
+    def import_graph(self, graph: CanonicalGraph, *, include_unreviewed: bool = False) -> ImportStatistics:
+        """Import nodes and approved relationships.
+
+        include_unreviewed=True is a preview for exploring the graph before review: every
+        relationship (unreviewed and candidate too) is written with its ``review_status``, so
+        anything that must rely on reviewed knowledge has to filter
+        ``WHERE r.review_status = 'approved'``. Never use it for the graph the tutor serves.
+        """
         report = GraphValidator().validate(graph)
         if not report.is_valid:
             codes = ", ".join(issue.code for issue in report.issues)
@@ -67,15 +74,29 @@ class Neo4jGraphStore:
             raise GraphImportError(
                 "Approved relationships are missing review history: " + ", ".join(missing_review)
             )
-        excluded = len(graph.relationships) - len(approved) + len(graph.candidate_relationships)
+        imported = (list(graph.relationships) + list(graph.candidate_relationships)
+                    if include_unreviewed else approved)
+        excluded = len(graph.relationships) + len(graph.candidate_relationships) - len(imported)
         self.driver.execute_query(
             """
             MATCH ()-[r]->()
-            WHERE r.graph_id = $graph_id AND NOT r.canonical_id IN $approved_ids
+            WHERE r.graph_id = $graph_id AND NOT r.canonical_id IN $imported_ids
             DELETE r
             """,
             graph_id=graph.graph_id,
-            approved_ids=[edge.canonical_id for edge in approved],
+            imported_ids=[edge.canonical_id for edge in imported],
+            database_=self.database,
+        )
+        # Re-importing a rebuilt graph: nodes of this graph that no longer exist (merged
+        # duplicates, renamed lessons) would otherwise linger next to the new ones.
+        self.driver.execute_query(
+            """
+            MATCH (n:Entity)
+            WHERE n.graph_id = $graph_id AND NOT n.canonical_id IN $node_ids
+            DETACH DELETE n
+            """,
+            graph_id=graph.graph_id,
+            node_ids=[node.canonical_id for node in graph.nodes],
             database_=self.database,
         )
         nodes_by_type: dict[NodeType, list[dict]] = defaultdict(list)
@@ -91,7 +112,7 @@ class Neo4jGraphStore:
             self.driver.execute_query(query, rows=rows, database_=self.database)
 
         edges_by_type: dict[RelationshipType, list[dict]] = defaultdict(list)
-        for edge in approved:
+        for edge in imported:
             edges_by_type[edge.relationship_type].append(_relationship_row(edge, graph.graph_id))
         for relationship_type, rows in edges_by_type.items():
             cypher_type = RELATIONSHIP_TYPES[relationship_type]
@@ -141,6 +162,7 @@ def _relationship_row(edge, graph_id: str) -> dict:
             "disposition": edge.disposition.value,
             "review_status": edge.review_status.value,
             "rationale": edge.rationale,
+            "description": edge.description, "strength": edge.strength, "weight": edge.weight,
             "review_history_json": json.dumps(
                 [item.model_dump(mode="json") for item in edge.review_history], ensure_ascii=False
             ),

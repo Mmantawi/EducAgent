@@ -1,0 +1,36 @@
+{
+  "relationships": [
+    {
+      "local_id": "break_up_multiplicand",
+      "relationship_type": "TEACHES",
+      "source_local_id": "section",
+      "target_local_id": "break_up_multiplicand",
+      "description": "This lesson teaches students how to break up the multiplicand to multiply.",
+      "strength": 10
+    },
+    {
+      "local_id": "break_up_multiplier",
+      "relationship_type": "TEACHES",
+      "source_local_id": "section",
+      "target_local_id": "break_up_multiplier",
+      "description": "This lesson teaches students how to break up the multiplier to multiply.",
+      "strength": 10
+    },
+    {
+      "local_id": "break_up_multiplicand",
+      "relationship_type": "RELATED_TO",
+      "source_local_id": "break_up_multiplier",
+      "target_local_id": "break_up_multiplicand",
+      "description": "Both breaking up the multiplicand and breaking up the multiplier are techniques used to simplify multiplication.",
+      "strength": 7
+    },
+    {
+      "local_id": "break_up_multiplier",
+      "relationship_type": "RELATED_TO",
+      "source_local_id": "break_up_multiplicand",
+      "target_local_id": "break_up_multiplier",
+      "description": "Both breaking up the multiplicand and breaking up the multiplier are techniques used to simplify multiplication.",
+      "strength": 7
+    }
+  ]
+}

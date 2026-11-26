@@ -34,6 +34,9 @@ class CanonicalRelationship(ContractModel):
     provenance: list[SourceReference] = Field(min_length=1)
     rationale: str | None = None
     review_history: list[ReviewDecision] = Field(default_factory=list)
+    description: str | None = Field(default=None, description="Merged model descriptions of the link")
+    strength: int | None = Field(default=None, ge=1, le=10, description="Highest model-rated strength")
+    weight: int = Field(default=1, ge=1, description="Number of extracted instances (sections) merged")
 
     @model_validator(mode="after")
     def validate_semantics(self):

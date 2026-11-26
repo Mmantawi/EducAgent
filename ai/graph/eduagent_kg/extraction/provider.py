@@ -27,6 +27,7 @@ class ProviderResult:
     raw_text: str
     provider: str
     model: str
+    warnings: tuple[str, ...] = ()  # items dropped while parsing the model output, and why
 
 
 class ExtractionProvider(ABC):

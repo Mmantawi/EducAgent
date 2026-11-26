@@ -108,11 +108,14 @@ class ExtractionRunner:
         if not force and raw_path.is_file():
             try:
                 raw_payload = json.loads(raw_path.read_text(encoding="utf-8"))
-                if isinstance(raw_payload.get("parsed"), dict):
+                # Reuse a saved model answer only if the same prompt/model/section produced it;
+                # otherwise a prompt fix would silently keep serving the old answer.
+                if isinstance(raw_payload.get("parsed"), dict) and raw_payload.get("cache_key") == cache_key:
                     draft = SectionExtractionDraft.model_validate(raw_payload["parsed"])
                     fragment = self.assembler.assemble(
                         section, draft, provider=self.provider.provider_name,
                         model=self.provider.model_name,
+                        extra_warnings=raw_payload.get("parse_warnings") or (),
                     )
                     _write_json(fragment_path, fragment.model_dump(mode="json"))
                     _write_json(cache_path, {
@@ -152,10 +155,12 @@ class ExtractionRunner:
                 "section_id": section.section_id, "provider": provider_result.provider,
                 "model": provider_result.model, "raw_text": provider_result.raw_text,
                 "parsed": provider_result.parsed.model_dump(mode="json"),
+                "parse_warnings": list(provider_result.warnings), "cache_key": cache_key,
             })
             fragment = self.assembler.assemble(
                 section, provider_result.parsed,
                 provider=provider_result.provider, model=provider_result.model,
+                extra_warnings=provider_result.warnings,
             )
             _write_json(fragment_path, fragment.model_dump(mode="json"))
             _write_json(cache_path, {"cache_key": cache_key, "prompt_version": PROMPT_VERSION})

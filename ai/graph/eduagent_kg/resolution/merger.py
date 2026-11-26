@@ -5,12 +5,16 @@ from uuid import NAMESPACE_URL, uuid5
 from eduagent_kg.ids import make_canonical_id, make_relationship_id
 from eduagent_kg.schemas.documents import StructuredTextbook
 from eduagent_kg.schemas.enums import (
-    ClaimDisposition, NodeType, RelationshipType, ReviewStatus,
+    ClaimDisposition, DecisionType, NodeType, RelationshipType, ReviewStatus,
 )
 from eduagent_kg.schemas.extraction import GraphFragment
 from eduagent_kg.schemas.graph import CanonicalEntity, CanonicalGraph, CanonicalRelationship
 from eduagent_kg.schemas.merge import MergeStatistics
-from eduagent_kg.schemas.review import ReviewItem, ReviewQueue
+from eduagent_kg.schemas.review import ReviewDecision, ReviewItem, ReviewQueue
+
+from eduagent_kg.ontology import (
+    ACYCLIC_RELATIONSHIPS, STRUCTURAL_RELATIONSHIPS, SYMMETRIC_RELATIONSHIPS,
+)
 
 from .normalization import normalize_text
 from .resolver import EntityResolver
@@ -19,8 +23,13 @@ from .resolver import EntityResolver
 class HierarchicalGraphMerger:
     """Merge in section → lesson → book → subject → global scope order."""
 
-    def __init__(self, resolver: EntityResolver | None = None) -> None:
+    def __init__(
+        self, resolver: EntityResolver | None = None, *, auto_approve_structural: bool = True,
+    ) -> None:
         self.resolver = resolver or EntityResolver()
+        # PART_OF / SUPPORTED_BY come from the parsed textbook layout, never from the model,
+        # so a person does not need to approve them one by one.
+        self.auto_approve_structural = auto_approve_structural
 
     def merge(
         self, fragments: list[GraphFragment], textbook: StructuredTextbook
@@ -58,6 +67,10 @@ class HierarchicalGraphMerger:
                 target_key = f"{fragment.fragment_id}::{relation.target_local_id}"
                 source_id = mention_map[source_key]
                 target_id = mention_map[target_key]
+                if source_id == target_id:
+                    continue  # both endpoints resolved to the same canonical entity
+                if relation.relationship_type in SYMMETRIC_RELATIONSHIPS and target_id < source_id:
+                    source_id, target_id = target_id, source_id
                 canonical = CanonicalRelationship(
                     canonical_id=make_relationship_id(
                         relation.relationship_type.value, source_id, target_id
@@ -68,6 +81,7 @@ class HierarchicalGraphMerger:
                     disposition=relation.extraction.disposition,
                     review_status=relation.extraction.review_status,
                     provenance=list(relation.provenance), rationale=relation.rationale,
+                    description=relation.description, strength=relation.strength,
                 )
                 target_collection = (
                     candidates if canonical.disposition == ClaimDisposition.INFERRED else relationships
@@ -78,14 +92,20 @@ class HierarchicalGraphMerger:
                         review_id=f"review:relationship:{canonical.canonical_id}",
                         category="inferred_prerequisite",
                         target_id=canonical.canonical_id,
-                        reason="LLM-inferred prerequisite requires explicit human approval.",
+                        reason=f"LLM-inferred {canonical.relationship_type.value} requires explicit human approval.",
                         payload=canonical.model_dump(mode="json"),
                     ))
 
+        folded = fold_inferred_into_quoted(relationships, candidates)
+        review_items = [item for item in review_items
+                        if not (item.category == "inferred_prerequisite" and item.target_id in folded)]
         for _, textbook in ordered_datasets:
             self._add_hierarchy(textbook, nodes, relationships)
         review_items.extend(self._relationship_reviews(relationships, candidates))
         for edge in relationships.values():
+            if self.auto_approve_structural and edge.relationship_type in STRUCTURAL_RELATIONSHIPS:
+                _approve_structural(edge)
+                continue
             if edge.review_status != ReviewStatus.APPROVED:
                 review_items.append(ReviewItem(
                     review_id=f"review:relationship:{edge.canonical_id}",
@@ -189,19 +209,17 @@ class HierarchicalGraphMerger:
 
     def _merge_edge(self, collection, edge: CanonicalRelationship) -> None:
         key = (edge.relationship_type, edge.source_canonical_id, edge.target_canonical_id)
-        if key in collection:
-            collection[key].provenance = _unique_provenance(
-                collection[key].provenance + edge.provenance
-            )
-        else:
+        if key not in collection:
             collection[key] = edge
+        else:
+            fold_edge(collection[key], edge)
 
     def _relationship_reviews(self, relationships, candidates) -> list[ReviewItem]:
         items: list[ReviewItem] = []
         all_edges = list(relationships.values()) + list(candidates.values())
         keys = {(e.relationship_type, e.source_canonical_id, e.target_canonical_id): e for e in all_edges}
         for edge in all_edges:
-            if edge.relationship_type not in {RelationshipType.PREREQUISITE_FOR, RelationshipType.IS_A}:
+            if edge.relationship_type not in ACYCLIC_RELATIONSHIPS:
                 continue
             reverse = keys.get((edge.relationship_type, edge.target_canonical_id, edge.source_canonical_id))
             if reverse and edge.canonical_id < reverse.canonical_id:
@@ -223,11 +241,56 @@ class HierarchicalGraphMerger:
         return items
 
 
+def fold_edge(existing: CanonicalRelationship, edge: CanonicalRelationship) -> None:
+    """Merge another instance of the same link (GraphRAG: weight = number of instances)."""
+    existing.provenance = _unique_provenance(existing.provenance + edge.provenance)
+    existing.weight += edge.weight
+    if edge.strength is not None:
+        existing.strength = max(existing.strength or 0, edge.strength)
+    if edge.description and edge.description not in (existing.description or ""):
+        existing.description = (
+            f"{existing.description} | {edge.description}" if existing.description else edge.description
+        )
+    if edge.rationale and not existing.rationale:
+        existing.rationale = edge.rationale
+    if edge.review_status == ReviewStatus.APPROVED and existing.review_status != ReviewStatus.APPROVED:
+        existing.review_status = ReviewStatus.APPROVED
+        existing.review_history = existing.review_history + edge.review_history
+
+
+def fold_inferred_into_quoted(relationships: dict, candidates: dict) -> set[str]:
+    """A link quoted in one lesson and only inferred in another is one link, backed by a quote.
+
+    Without this the same edge sits in both lists and the validator reports a duplicate.
+    Returns the canonical ids of the folded candidates.
+    """
+    folded = set()
+    for key in [k for k in candidates if k in relationships]:
+        edge = candidates.pop(key)
+        fold_edge(relationships[key], edge)
+        folded.add(edge.canonical_id)
+    return folded
+
+
 def load_fragments(directory: Path) -> list[GraphFragment]:
     paths = sorted(directory.glob("*.json"))
     if not paths:
         raise FileNotFoundError(f"No graph fragment JSON files found in {directory}")
     return [GraphFragment.model_validate_json(path.read_text(encoding="utf-8")) for path in paths]
+
+
+STRUCTURE_REVIEWER = "system:textbook-structure"
+
+
+def _approve_structural(edge: CanonicalRelationship) -> None:
+    """Approve a layout-derived link, with an auditable review record (required for import)."""
+    if edge.review_status == ReviewStatus.APPROVED:
+        return
+    edge.review_history = edge.review_history + [ReviewDecision(
+        target_id=edge.canonical_id, reviewer_id=STRUCTURE_REVIEWER, decision=DecisionType.APPROVE,
+        reason="Derived from the parsed textbook layout (chapter/lesson/section), not from the model.",
+    )]
+    edge.review_status = ReviewStatus.APPROVED
 
 
 def _merge_node(nodes: dict[str, CanonicalEntity], incoming: CanonicalEntity) -> None:

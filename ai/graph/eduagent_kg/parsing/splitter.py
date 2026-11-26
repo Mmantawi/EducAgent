@@ -37,8 +37,43 @@ MICRO_PROMPTS = {
 }
 
 
+BARE_LESSON_NUMBER_RE = re.compile(r"^\d{1,2}\s*-\s*\d{1,2}$")
+PAGE_NUMBER_RE = re.compile(r"^\[?\d{1,3}\]?$")
+OCR_ARTIFACT_RE = re.compile(r"\[OCR_ARTIFACT:[^\]]*\]")
+
+
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip().lower()
+
+
+def is_noise_line(line: str) -> bool:
+    """Page numbers and the chapter-tab strip (``2 3 4 5 ... 18``) printed on page edges."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if PAGE_NUMBER_RE.match(stripped):
+        return True
+    tokens = stripped.split()
+    return len(tokens) >= 6 and all(re.fullmatch(r"[0-9]{1,2}", token) for token in tokens)
+
+
+def clean_text(text: str) -> str:
+    lines = [OCR_ARTIFACT_RE.sub("", line).rstrip() for line in text.split("\n")]
+    return "\n".join(line for line in lines if line.strip() and not is_noise_line(line))
+
+
+def _is_title_like(text: str) -> bool:
+    """A short unnumbered line such as ``Shorter Time Units`` printed on a lesson's opening page."""
+    stripped = text.strip()
+    words = stripped.split()
+    if not 1 <= len(words) <= 9 or _norm(stripped) in MICRO_PROMPTS:
+        return False
+    if stripped.endswith(("?", ".", ":")) or stripped[0] in "(（①②③④⑤-" or "\\" in stripped:
+        return False
+    if CHAPTER_RE.match(stripped) or REVIEW_RE.match(stripped) or MATH_EQUATION_RE.search(stripped):
+        return False
+    visible = [ch for ch in stripped if not ch.isspace()]
+    return bool(visible) and sum(ch.isalpha() for ch in visible) / len(visible) >= 0.6
 
 
 class HierarchicalSectionSplitter:
@@ -52,8 +87,8 @@ class HierarchicalSectionSplitter:
         stack: dict[int, tuple[str, str]] = {}
         occurrences: Counter[tuple[str, ...]] = Counter()
         sections: list[TextbookSection] = []
-        for heading, content, uncertain in groups:
-            level = self._level(heading) if heading else 1
+        for heading, content, uncertain, forced_level in groups:
+            level = forced_level or (self._level(heading) if heading else 1)
             title = heading.text.strip() if heading and heading.text.strip() else "Unresolved content"
             for old_level in [key for key in stack if key >= level]:
                 del stack[old_level]
@@ -77,7 +112,7 @@ class HierarchicalSectionSplitter:
                 heading_path=heading_path,
                 page_start=page_start,
                 page_end=page_end,
-                text="\n".join(block.text for block in all_blocks if block.text),
+                text=clean_text("\n".join(block.text for block in all_blocks if block.text)),
                 block_ids=[block.block_id for block in all_blocks],
                 table_block_ids=[block.block_id for block in all_blocks if block.block_type == BlockType.TABLE],
                 image_block_ids=[block.block_id for block in all_blocks if block.block_type == BlockType.IMAGE],
@@ -98,7 +133,9 @@ class HierarchicalSectionSplitter:
             for b in blocks
             if b.text
         )
-        groups: list[tuple[ParsedBlock | None, list[ParsedBlock], bool]] = []
+        groups: list[tuple[ParsedBlock | None, list[ParsedBlock], bool, int | None]] = []
+        # Content of a lesson's opening page, seen before that lesson's numbered heading.
+        pending: list[ParsedBlock] | None = None
         heading: ParsedBlock | None = None
         content: list[ParsedBlock] = []
         active_chapter: str | None = None
@@ -107,11 +144,12 @@ class HierarchicalSectionSplitter:
         for b in blocks:
             t = b.text.strip()
             if not t:
-                content.append(b)
+                (pending if pending is not None else content).append(b)
                 continue
 
             is_heading = False
             heading_kind: str | None = None
+            opening_marker = False
 
             if has_curriculum:
                 if _norm(t) in MICRO_PROMPTS:
@@ -125,6 +163,8 @@ class HierarchicalSectionSplitter:
                         parts = t.split()
                         ch_key = parts[0].lower() + " " + (parts[1].lower() if len(parts) > 1 else "")
                         is_heading = (active_chapter != ch_key)
+                        # The chapter banner repeats only on a lesson's opening page.
+                        opening_marker = not is_heading
                 elif REVIEW_RE.match(t):
                     heading_kind = "review"
                     is_heading = (active_lesson != _norm(t))
@@ -141,6 +181,32 @@ class HierarchicalSectionSplitter:
                 if b.block_type == BlockType.HEADING and t:
                     is_heading = True
 
+            if opening_marker:
+                if pending is None:
+                    pulled = self._pull_back_title(content)
+                    if heading is not None or content:
+                        groups.append((heading, content, heading is None, None))
+                    heading, content = None, []
+                    pending = pulled
+                pending.append(b)
+                continue
+
+            if pending is not None and not is_heading:
+                pending.append(b)
+                continue
+
+            if is_heading and pending is not None:
+                if heading_kind == "lesson":
+                    # The opening page belongs to the lesson whose numbered heading follows it.
+                    active_lesson = _norm(t)
+                    if heading is not None or content:
+                        groups.append((heading, content, heading is None, None))
+                    heading, content = b, pending
+                    pending = None
+                    continue
+                self._emit_standalone(pending, groups)
+                pending = None
+
             if is_heading:
                 if heading_kind == "chapter":
                     parts = t.split()
@@ -150,15 +216,51 @@ class HierarchicalSectionSplitter:
                     active_lesson = _norm(t)
 
                 if heading is not None or content:
-                    groups.append((heading, content, heading is None))
+                    groups.append((heading, content, heading is None, None))
                 heading = b
                 content = []
+                if heading_kind == "chapter":
+                    # The page after a chapter banner opens that chapter's first lesson.
+                    pending = []
             else:
                 content.append(b)
 
         if heading is not None or content:
-            groups.append((heading, content, heading is None))
+            groups.append((heading, content, heading is None, None))
+        if pending:
+            self._emit_standalone(pending, groups)
         return groups
+
+    @staticmethod
+    def _pull_back_title(content: list[ParsedBlock]) -> list[ParsedBlock]:
+        """Move a lesson number/title printed just before the chapter banner into the opening page."""
+        pulled: list[ParsedBlock] = []
+        while content:
+            text = content[-1].text.strip()
+            if not text or is_noise_line(text):
+                if pulled:
+                    break
+                content.pop()
+                continue
+            if BARE_LESSON_NUMBER_RE.match(text) or (_is_title_like(text) and len(pulled) < 2):
+                pulled.insert(0, content.pop())
+                continue
+            break
+        return pulled
+
+    @staticmethod
+    def _emit_standalone(pending: list[ParsedBlock], groups) -> None:
+        """An opening page with no numbered heading after it is a lesson of its own."""
+        if not pending:
+            return
+        title_index = next(
+            (i for i, block in enumerate(pending[:6]) if _is_title_like(block.text)), None
+        )
+        if title_index is None:
+            groups.append((None, pending, True, 2))
+            return
+        title = pending[title_index]
+        groups.append((title, pending[:title_index] + pending[title_index + 1:], False, 2))
 
     def _level(self, heading: ParsedBlock) -> int:
         if heading.heading_level is not None:

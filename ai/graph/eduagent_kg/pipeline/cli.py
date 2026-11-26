@@ -1,12 +1,11 @@
 import argparse
 import json
 import logging
-import os
 from pathlib import Path
 
 from eduagent_kg.config import Settings
 from eduagent_kg.console import configure_utf8_stdout
-from eduagent_kg.extraction import GeminiExtractionProvider, MockExtractionProvider
+from eduagent_kg.extraction import MockExtractionProvider, OpenAICompatibleExtractionProvider
 from eduagent_kg.parsing import FixtureParser, MinerUParser
 from eduagent_kg.schemas.llm import SectionExtractionDraft
 from eduagent_kg.schemas.pipeline import PipelineBookInput, StageStatus
@@ -23,12 +22,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, default=Path("data/pipeline"))
     parser.add_argument("--parser", choices=("mineru", "fixture"), default="mineru")
     parser.add_argument("--parser-fixture", type=Path)
-    parser.add_argument("--provider", choices=("gemini", "mock"), default="gemini")
+    parser.add_argument("--provider", choices=("openai-compatible", "mock"), default="openai-compatible")
     parser.add_argument("--mock-responses", type=Path)
+    parser.add_argument("--base-url", help="Overrides EDUAGENT_KG_LLM_BASE_URL")
+    parser.add_argument("--model", help="Overrides EDUAGENT_KG_LLM_MODEL")
     parser.add_argument("--decisions", type=Path)
     parser.add_argument("--rerun-stage", action="append", default=[])
     parser.add_argument("--import-approved", action="store_true")
-    parser.add_argument("--live", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
@@ -55,14 +55,12 @@ def main(argv: list[str] | None = None) -> int:
                 for section_id, draft in response_payload.items()
             })
     else:
-        live_enabled = os.getenv("EDUAGENT_KG_ENABLE_LIVE_GEMINI", "").casefold() == "true"
-        if not args.live or not live_enabled or not settings.gemini_api_key:
-            parser.error(
-                "Gemini requires --live, EDUAGENT_KG_ENABLE_LIVE_GEMINI=true, and API credentials"
+        def provider_factory(_):
+            return OpenAICompatibleExtractionProvider(
+                base_url=args.base_url or settings.llm_base_url,
+                model=args.model or settings.llm_model,
+                api_key=settings.llm_api_key, max_tokens=settings.llm_max_tokens,
             )
-        provider_factory = lambda _: GeminiExtractionProvider(
-            api_key=settings.gemini_api_key, model=settings.gemini_model
-        )
 
     decisions = None
     if args.decisions:

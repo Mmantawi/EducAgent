@@ -3,6 +3,8 @@ from eduagent_kg.schemas.enums import DecisionType, ReviewStatus
 from eduagent_kg.schemas.graph import CanonicalGraph, CanonicalRelationship
 from eduagent_kg.schemas.review import ReviewDecision, ReviewQueue
 
+MERGE_CATEGORIES = frozenset({"fuzzy_merge_candidate", "embedding_merge_candidate"})
+
 
 def apply_review_decisions(
     graph: CanonicalGraph, queue: ReviewQueue, decisions: list[ReviewDecision]
@@ -22,11 +24,13 @@ def apply_review_decisions(
                 _approve_candidate_relationship(graph, item.target_id, decision)
             elif item.category == "relationship_approval":
                 _approve_existing_relationship(graph, item.target_id, decision)
-            elif item.category in {"fuzzy_merge_candidate", "semantic_candidate"}:
+            elif item.category in MERGE_CATEGORIES:
                 _approve_entity_merge(graph, item.payload)
         elif decision.decision == DecisionType.REJECT:
             item.status = ReviewStatus.REJECTED
-            if item.category == "relationship_approval":
+            if item.category in MERGE_CATEGORIES:
+                pass  # "not the same thing": both nodes stay as they are
+            elif item.category == "relationship_approval":
                 _reject_existing_relationship(graph, item.target_id, decision)
             else:
                 _reject_candidate_relationship(graph, item.target_id, decision)

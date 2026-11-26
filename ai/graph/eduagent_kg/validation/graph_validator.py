@@ -2,7 +2,7 @@ from collections import Counter
 
 import networkx as nx
 
-from eduagent_kg.ontology import relationship_is_allowed
+from eduagent_kg.ontology import ACYCLIC_RELATIONSHIPS, relationship_is_allowed
 from eduagent_kg.schemas.enums import RelationshipType, Severity
 from eduagent_kg.schemas.graph import CanonicalGraph
 from eduagent_kg.schemas.review import ValidationIssue, ValidationReport
@@ -72,7 +72,7 @@ class GraphValidator:
 
         cycles_by_type: dict[str, list[list[str]]] = {}
         # Candidates are excluded: an unreviewed inferred prerequisite is not an approved fact.
-        for relationship_type in (RelationshipType.PREREQUISITE_FOR, RelationshipType.IS_A):
+        for relationship_type in sorted(ACYCLIC_RELATIONSHIPS):
             typed_graph = nx.DiGraph()
             typed_graph.add_nodes_from(node_map)
             typed_graph.add_edges_from(

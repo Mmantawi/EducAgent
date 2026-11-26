@@ -7,7 +7,7 @@ from eduagent_kg.schemas.review import ReviewDecision, ReviewQueue
 from eduagent_kg.validation.graph_validator import GraphValidator
 from eduagent_kg.validation.review import apply_review_decisions
 
-from eduagent_kg.resolution.cli import _write
+from eduagent_kg.files import write_json_atomic as _write
 
 
 def main(argv: list[str] | None = None) -> int:

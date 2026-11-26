@@ -27,6 +27,8 @@ class ExtractedRelationship(ContractModel):
     provenance: list[SourceReference] = Field(min_length=1)
     extraction: ExtractionMetadata
     rationale: str | None = None
+    description: str | None = None
+    strength: int | None = Field(default=None, ge=1, le=10)
 
     @model_validator(mode="after")
     def validate_semantics(self):
@@ -48,6 +50,9 @@ class GraphFragment(ContractModel):
     section_id: str = Field(min_length=1)
     entities: list[ExtractedEntity]
     relationships: list[ExtractedRelationship]
+    warnings: list[str] = Field(
+        default_factory=list, description="Model output items dropped during assembly, and why"
+    )
 
     @model_validator(mode="after")
     def validate_local_references(self):

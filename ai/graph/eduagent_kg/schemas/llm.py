@@ -33,6 +33,12 @@ class DraftRelationship(ContractModel):
     )
     inferred: bool = False
     rationale: str | None = None
+    description: str | None = Field(
+        default=None, description="One sentence explaining how the source relates to the target"
+    )
+    strength: int | None = Field(
+        default=None, ge=1, le=10, description="How strong/central the link is, 1 (weak) to 10 (essential)"
+    )
 
     @model_validator(mode="after")
     def require_inference_rationale(self):

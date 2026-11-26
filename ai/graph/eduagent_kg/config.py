@@ -15,8 +15,11 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "production"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     data_dir: Path = Path("data")
-    gemini_api_key: str | None = Field(default=None, repr=False)
-    gemini_model: str = "gemini-2.5-flash"
+    # Any OpenAI-compatible chat endpoint: llama.cpp/vLLM server, Ollama, OpenRouter, ...
+    llm_base_url: str = "http://localhost:8080/v1"
+    llm_model: str = "qwen3-14b"
+    llm_api_key: str | None = Field(default=None, repr=False)
+    llm_max_tokens: int = Field(default=6000, ge=256)
     extraction_max_concurrency: int = Field(default=2, ge=1, le=32)
     extraction_rate_limit_per_minute: int = Field(default=30, ge=1)
     extraction_max_retries: int = Field(default=3, ge=0, le=10)
