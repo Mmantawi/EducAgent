@@ -42,7 +42,14 @@ class SampleCaseTests(unittest.TestCase):
         self.cases = load_cases(SAMPLES)
 
     def test_all_samples_load(self):
-        self.assertEqual(len(self.cases), 30)
+        self.assertEqual(len(self.cases), 100)
+
+    def test_attack_set_and_held_back_cases(self):
+        self.assertGreaterEqual(sum(c.category == "attack" for c in self.cases), 30)
+        for check in set(Check) - {Check.JUDGE_UNAVAILABLE}:
+            for split in ("dev", "test"):
+                with self.subTest(check=check.value, split=split):
+                    self.assertTrue(any(check in c.labels.failed_checks and c.split == split for c in self.cases))
 
     def test_samples_cover_both_languages_every_rung_and_every_check(self):
         self.assertEqual({c.language.value for c in self.cases}, {"ar-EG", "en"})
@@ -57,7 +64,7 @@ class SampleCaseTests(unittest.TestCase):
                 self.assertIsInstance(case.to_judge_input(), JudgeInput)
 
     def test_summary_mentions_every_case(self):
-        self.assertTrue(summarize(self.cases).startswith("30 cases"))
+        self.assertTrue(summarize(self.cases).startswith("100 cases"))
 
 
 class ValidationTests(unittest.TestCase):

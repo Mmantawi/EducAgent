@@ -136,7 +136,7 @@ class CommandTests(unittest.TestCase):
             self.assertEqual(len(saved), 1)
             report = json.loads(saved[0].read_text(encoding="utf-8"))
             self.assertEqual(report["split"], "dev")
-            self.assertEqual(report["cases"], 20)
+            self.assertEqual(report["cases"], sum(case.split == "dev" for case in load_cases(SAMPLES)))
             self.assertIn("Judge: naive_answer_match", output.getvalue())
 
     def test_test_split_warns(self):
