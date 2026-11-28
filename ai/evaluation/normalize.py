@@ -140,6 +140,11 @@ _add_unit("minute", "time", Fraction(1), "دقيقه دقائق دقايق minut
 _add_unit("hour", "time", Fraction(60), "ساعه ساعات hour hours hr hrs")
 _add_unit("day", "time", Fraction(1440), "يوم ايام day days")
 
+def units_of(dimension: str) -> List[Unit]:
+    """Every unit of one dimension, such as all lengths."""
+    return sorted({unit for unit in _UNITS.values() if unit.dimension == dimension}, key=lambda unit: unit.factor)
+
+
 _ARABIC_CHOICES = {"ا": "أ", "ب": "ب", "ج": "جـ", "د": "د", "ه": "هـ", "و": "و"}
 _ENGLISH_CHOICES = set("abcdef")
 
