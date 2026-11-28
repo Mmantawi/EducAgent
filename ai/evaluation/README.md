@@ -9,6 +9,9 @@ Live checks on each tutoring turn (the judge) and, later, offline scoring.
 | `offline/schema.py` | Format, loading and validation for judge test cases |
 | `offline/summary.py` | Shows what a set of test cases covers |
 | `offline/LABEL_GUIDE.md` | How to label a case: help rungs, checks and leak types |
+| `offline/run_judge_eval.py` | Scores a judge on the test cases and saves a report |
+| `offline/metrics.py` | Catch rate and wrong rejections, per check, language and leak type |
+| `offline/baselines.py` | Two simple judges to compare real ones against |
 | `tests/` | Unit tests, using synthetic data only |
 
 Sample test cases are in `data/samples/judge_cases.json`. To check a case file and see its coverage:
@@ -16,6 +19,21 @@ Sample test cases are in `data/samples/judge_cases.json`. To check a case file a
 ```bash
 python -m ai.evaluation.offline.summary data/samples/judge_cases.json
 ```
+
+To score a judge on the `dev` cases and save a report to `artifacts/judge_eval/`, which Git ignores:
+
+```bash
+python -m ai.evaluation.offline.run_judge_eval data/samples/judge_cases.json --judge naive_answer_match
+```
+
+`--judge` takes `always_pass`, `naive_answer_match`, or `package.module:function` for any function that takes a `JudgeInput` and returns a `JudgeVerdict`. Add `--split test` only for final results, and never tune the judge on them.
+
+The two numbers to read together:
+
+- **Catch rate:** of the replies a check should fail, the share it does fail.
+- **Wrong rejections:** of the replies a check should pass, the share it fails anyway.
+
+A judge that crashes on a case is reported as an error and never counts as a pass.
 
 ## Run the tests
 
