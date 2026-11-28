@@ -6,6 +6,10 @@ Live checks on each tutoring turn (the judge) and, later, offline scoring.
 |---|---|
 | `contract.py` | Draft input and output format of the judge |
 | `normalize.py` | Reads a child's answer in Egyptian Arabic or English: numbers, number words up to the thousands, units, and multiple-choice letters |
+| `judge.py` | The full judge: code checks first, then the LLM layer, which can only add failures |
+| `llm/llm_judge.py` | The LLM layer: asks a model for a JSON verdict and fails closed if it cannot answer |
+| `llm/prompt.py` | The judge prompt, versioned as `PROMPT_VERSION` |
+| `llm/providers.py` | Free model providers: Ollama, any OpenAI-compatible server, or Hugging Face in-process |
 | `code_judge.py` | The judge's code layer: runs every code check and returns one verdict |
 | `checks/leak.py` | Finds the final answer in any form or unit, or too many worked steps for the rung |
 | `checks/citation.py` | Rejects citations of pages that were not retrieved |
@@ -65,6 +69,20 @@ python -m ai.evaluation.offline.run_judge_eval data/samples/judge_cases.json --j
 ```
 
 What code cannot do, and the LLM judge will: grounding, Egyptian Arabic versus formal Arabic, leaks described without the value, worked steps written without an equals sign, and tone beyond a short list of phrases. The leak check also flags a small answer such as 1 whenever that number appears, because a needless regeneration is safer than a leak.
+
+## LLM layer
+
+The LLM checks what code cannot: grounding, Egyptian versus formal Arabic, leaks without the number, steps written in words, and tone. It runs only when every code check passes, so it can never overrule a code failure. If the model times out or its output cannot be read, it retries once and then returns `fallback` with `judge_unavailable`, never a pass.
+
+Choose the model with environment variables, then score:
+
+```bash
+export LLM_PROVIDER=ollama              # or openai, or transformers
+export LLM_MODEL=qwen2.5:7b-instruct
+python -m ai.evaluation.offline.run_judge_eval data/samples/judge_cases.json --judge ai.evaluation.judge:env_judge
+```
+
+For an OpenAI-compatible server, also set `LLM_BASE_URL`, and `LLM_API_KEY_ENV` to the name of the variable that holds the key. Use `--judge ai.evaluation.judge:env_llm_only` to score the LLM layer on its own.
 
 ## Checking answers
 
