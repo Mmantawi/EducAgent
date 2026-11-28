@@ -6,7 +6,16 @@ Live checks on each tutoring turn (the judge) and, later, offline scoring.
 |---|---|
 | `contract.py` | Draft input and output format of the judge |
 | `normalize.py` | Reads a child's answer in Egyptian Arabic or English: numbers, number words up to the thousands, units, and multiple-choice letters |
+| `offline/schema.py` | Format, loading and validation for judge test cases |
+| `offline/summary.py` | Shows what a set of test cases covers |
+| `offline/LABEL_GUIDE.md` | How to label a case: help rungs, checks and leak types |
 | `tests/` | Unit tests, using synthetic data only |
+
+Sample test cases are in `data/samples/judge_cases.json`. To check a case file and see its coverage:
+
+```bash
+python -m ai.evaluation.offline.summary data/samples/judge_cases.json
+```
 
 ## Run the tests
 
