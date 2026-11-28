@@ -24,10 +24,16 @@ class ParseNumberTests(unittest.TestCase):
         self.assert_parses([
             ("0.5", F(1, 2)),
             ("٠٫٥", F(1, 2)),
-            ("3,5", F(7, 2)),
-            ("٣،٥", F(7, 2)),
-            ("0,125", F(1, 8)),
+            (".75", F(3, 4)),
+            ("-.5", F(-1, 2)),
+            ("12.40", F(62, 5)),
         ])
+
+    def test_comma_that_is_not_thousands_returns_none(self):
+        # "2,4" could be a list or the decimal 2.4, so it is not guessed.
+        for text in ("2,4", "3,5", "٣،٥", "0,125", "1,23", "12,3456"):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_number(text))
 
     def test_thousands(self):
         self.assert_parses([
@@ -107,6 +113,34 @@ class ParseNumberTests(unittest.TestCase):
             ("2 and 1/2", F(5, 2)),
         ])
 
+    def test_large_numbers_in_words(self):
+        self.assert_parses([
+            ("مية", F(100)),
+            ("مائة", F(100)),
+            ("مية وخمسة وعشرين", F(125)),
+            ("ميتين", F(200)),
+            ("تلتمية", F(300)),
+            ("ثلاثمائة", F(300)),
+            ("تلات مية", F(300)),
+            ("تمنمية تمانية وتمانين", F(888)),
+            ("ألف", F(1000)),
+            ("ألف وتلتمية", F(1300)),
+            ("ألفين وأربعمية وستة وتلاتين", F(2436)),
+            ("تلات تلاف", F(3000)),
+            ("عشرة آلاف", F(10000)),
+            ("مية ونص", F(201, 2)),
+            ("one hundred", F(100)),
+            ("a hundred", F(100)),
+            ("three hundred and five", F(305)),
+            ("two thousand four hundred thirty-six", F(2436)),
+            ("one thousand and twenty", F(1020)),
+        ])
+
+    def test_badly_ordered_number_words_return_none(self):
+        for text in ("خمسة وخمسة", "عشرين وتلاتين", "مية ومية", "خمسة وألف", "ten hundred", "hundred hundred"):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_number(text))
+
     def test_same_value_in_every_form(self):
         for text in ("1/2", "0.5", "٠٫٥", "½", "نص", "half", "one half"):
             with self.subTest(text=text):
@@ -125,8 +159,8 @@ class ParseNumberTests(unittest.TestCase):
             "twenty three five",
             "two half",
             "واحد واتنين",
-            "one hundred",
             "1.2.3",
+            "5.",
         ):
             with self.subTest(text=text):
                 self.assertIsNone(parse_number(text))
