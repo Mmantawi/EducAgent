@@ -6,6 +6,8 @@ Live checks on each tutoring turn (the judge) and, later, offline scoring.
 |---|---|
 | `contract.py` | Draft input and output format of the judge |
 | `normalize.py` | Reads a child's answer in Egyptian Arabic or English: numbers, number words up to the thousands, units, and multiple-choice letters |
+| `answer_checker.py` | Marks a math answer as correct, wrong, partly right or cannot check, against the answer key |
+| `offline/run_answer_eval.py` | Scores the answer checker on labelled answer cases |
 | `offline/schema.py` | Format, loading and validation for judge test cases |
 | `offline/summary.py` | Shows what a set of test cases covers |
 | `offline/LABEL_GUIDE.md` | How to label a case: help rungs, checks and leak types |
@@ -48,6 +50,25 @@ python -m unittest discover -s ai/evaluation/tests -t .
 - Code checks run first. The LLM judge handles only what code cannot, and it can reject a reply that passed code but cannot approve one that failed.
 - The judge never sets the help rung.
 - If an answer cannot be read with confidence, return "cannot check". Never mark a child wrong because of a guess.
+
+## Checking answers
+
+`check_answer(student_text, answer_key)` returns one of:
+
+| Result | When |
+|---|---|
+| `correct` | The same value in any form or unit, such as `0.43 لتر` for `430 مل` |
+| `wrong` | A readable answer with a different value, or a unit of the wrong kind |
+| `partial` | The right number with its unit missing, or some right choices with nothing wrong added |
+| `cannot_check` | The answer or key could not be read, or a bare number is only right in another unit (`4380` for `4.38 كجم`) |
+
+There is no rounding tolerance yet. To score the checker on the answer cases from the grade 5 book:
+
+```bash
+python -m ai.evaluation.offline.run_answer_eval data/samples/answer_cases.json
+```
+
+It fails if agreement is below 98% or if any correct answer is marked wrong.
 
 ## Reading answers
 
