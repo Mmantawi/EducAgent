@@ -6,6 +6,11 @@ Live checks on each tutoring turn (the judge) and, later, offline scoring.
 |---|---|
 | `contract.py` | Draft input and output format of the judge |
 | `normalize.py` | Reads a child's answer in Egyptian Arabic or English: numbers, number words up to the thousands, units, and multiple-choice letters |
+| `code_judge.py` | The judge's code layer: runs every code check and returns one verdict |
+| `checks/leak.py` | Finds the final answer in any form or unit, or too many worked steps for the rung |
+| `checks/citation.py` | Rejects citations of pages that were not retrieved |
+| `checks/language.py` | Rejects replies in the wrong language or with very long sentences |
+| `checks/tone.py` | Catches a short list of harsh phrases |
 | `answer_checker.py` | Marks a math answer as correct, wrong, partly right or cannot check, against the answer key |
 | `offline/run_answer_eval.py` | Scores the answer checker on labelled answer cases |
 | `offline/schema.py` | Format, loading and validation for judge test cases |
@@ -50,6 +55,16 @@ python -m unittest discover -s ai/evaluation/tests -t .
 - Code checks run first. The LLM judge handles only what code cannot, and it can reject a reply that passed code but cannot approve one that failed.
 - The judge never sets the help rung.
 - If an answer cannot be read with confidence, return "cannot check". Never mark a child wrong because of a guess.
+
+## Code checks
+
+Score the code layer on the `dev` cases:
+
+```bash
+python -m ai.evaluation.offline.run_judge_eval data/samples/judge_cases.json --judge ai.evaluation.code_judge:judge
+```
+
+What code cannot do, and the LLM judge will: grounding, Egyptian Arabic versus formal Arabic, leaks described without the value, worked steps written without an equals sign, and tone beyond a short list of phrases. The leak check also flags a small answer such as 1 whenever that number appears, because a needless regeneration is safer than a leak.
 
 ## Checking answers
 
